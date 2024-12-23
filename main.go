@@ -2,44 +2,44 @@ package main
 
 import (
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"net/http"
 	"strings"
+)
 
-	"golang.org/x/net/html"
+const (
+	BASE_URL              = "https://go.dev"
+	FLAG_BLOG_TITLE_ClASS = ".blogtitle"
 )
 
 type BlogLink struct {
-	Title string
-	Link  string
+	Title *string
+	Link  *string
 }
 
 var (
-	blogLinks []*BlogLink
+	BlogLinks []*BlogLink
 )
 
-// 提取文本内容的函数
-func extractBlogLink(n *html.Node) {
-	if n.Type == html.ElementNode && n.Data == "a" {
-		for _, attr := range n.Attr {
-			if attr.Key == "href" && strings.HasPrefix(attr.Val, "/blog/") {
-				if strings.EqualFold(attr.Val, "/blog/") {
-					break
-				}
-				blogLinks = append(blogLinks, &BlogLink{
-					Title: n.FirstChild.Data,
-					Link:  "https://go.dev" + attr.Val,
-				})
-				break
-			}
+func extractBlogLink(doc *goquery.Document) {
+	doc.Find(FLAG_BLOG_TITLE_ClASS).Each(func(i int, s *goquery.Selection) {
+		link, _ := s.Find("a").Attr("href")
+		if strings.EqualFold(link, "/blog/") {
+			return
 		}
-	}
-	for nextNode := n.FirstChild; nextNode != nil; nextNode = nextNode.NextSibling {
-		extractBlogLink(nextNode)
-	}
+		title := s.Find("a").Text()
+
+		blogLink := &BlogLink{
+			Title: &title,
+			Link:  &link,
+		}
+		BlogLinks = append(BlogLinks, blogLink)
+	})
 }
 
 func main() {
-	resp, err := http.Get("https://go.dev/blog/all")
+	blogAllUrl := fmt.Sprintf("%s/blog/all", BASE_URL)
+	resp, err := http.Get(blogAllUrl)
 	if err != nil {
 		fmt.Println("请求失败:", err)
 		return
@@ -47,22 +47,21 @@ func main() {
 	defer resp.Body.Close()
 
 	// 解析HTML
-	doc, err := html.Parse(resp.Body)
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		fmt.Println("解析HTML失败:", err)
 		return
 	}
 
-	// 提取博客链接
 	extractBlogLink(doc)
 
-	// 保存到文件
-	if len(blogLinks) == 0 {
-		fmt.Println("没有获取到博客链接")
+	if len(BlogLinks) == 0 {
+		fmt.Println("未找到博客链接")
 		return
 	}
 
-	for _, link := range blogLinks {
-		fmt.Printf("标题: %s\n链接: %s\n\n", link.Title, link.Link)
+	for _, blogLink := range BlogLinks {
+		fmt.Printf("标题: %s\n链接: %s\n", *blogLink.Title, *blogLink.Link)
 	}
+
 }
